@@ -43,7 +43,7 @@ class InternalControllerTest {
     @Test
     void recordingAFreshExternalMovementReturns201() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT.minusSeconds(1));
-        Transaction recorded = TransactionFixtures.recordedCardPayment("op-1", "card-1", "cust-A", "100.00",
+        Transaction recorded = TransactionFixtures.recordedCardPayment("op-00001", "card-1", "cust-A", "100.00",
                 "900.00");
         given(recordExternalMovementUseCase.execute(any())).willReturn(Single.just(recorded));
 
@@ -51,7 +51,7 @@ class InternalControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "productType": "CREDIT_CARD",
                           "productId": "card-1",
                           "customerId": "cust-A",
@@ -70,7 +70,7 @@ class InternalControllerTest {
     @Test
     void replayingAnAlreadyRecordedExternalMovementReturns200() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT.plusSeconds(60));
-        Transaction recorded = TransactionFixtures.recordedCardPayment("op-1", "card-1", "cust-A", "100.00",
+        Transaction recorded = TransactionFixtures.recordedCardPayment("op-00001", "card-1", "cust-A", "100.00",
                 "900.00");
         given(recordExternalMovementUseCase.execute(any())).willReturn(Single.just(recorded));
 
@@ -78,7 +78,7 @@ class InternalControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "productType": "CREDIT_CARD",
                           "productId": "card-1",
                           "customerId": "cust-A",
@@ -102,7 +102,7 @@ class InternalControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "productType": "CREDIT_CARD",
                           "productId": "card-1",
                           "customerId": "cust-A",

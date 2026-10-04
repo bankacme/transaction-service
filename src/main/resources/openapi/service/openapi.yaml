@@ -526,12 +526,7 @@ components:
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../common/common-schemas.yaml#/components/schemas/ErrorResponse'
-              - type: object
-                properties:
-                  transactionId:
-                    $ref: '../common/common-schemas.yaml#/components/schemas/Id'
+            $ref: '#/components/schemas/MovementRejected'
     TransferRejected:
       description: |
         La transferencia no se completó. `transferStatus` es `FAILED` (retiro rechazado, no se movió dinero) o `COMPENSATED`
@@ -539,15 +534,7 @@ components:
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../common/common-schemas.yaml#/components/schemas/ErrorResponse'
-              - type: object
-                required: [transferId, transferStatus]
-                properties:
-                  transferId:
-                    $ref: '../common/common-schemas.yaml#/components/schemas/Id'
-                  transferStatus:
-                    $ref: '#/components/schemas/TransferStatus'
+            $ref: '#/components/schemas/TransferRejected'
     TransactionPageOk:
       description: Página de movimientos, más recientes primero.
       content:
@@ -556,6 +543,27 @@ components:
             $ref: '#/components/schemas/TransactionPage'
 
   schemas:
+
+    MovementRejected:
+      description: Cuerpo del 422 de depósito/retiro. `ErrorResponse` más el `transactionId` del movimiento `FAILED`.
+      allOf:
+        - $ref: '../common/common-schemas.yaml#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            transactionId:
+              $ref: '../common/common-schemas.yaml#/components/schemas/Id'
+
+    TransferRejected:
+      description: Cuerpo del 422 de transferencia. `ErrorResponse` más `transferId` y `transferStatus` (`FAILED` o `COMPENSATED`).
+      allOf:
+        - $ref: '../common/common-schemas.yaml#/components/schemas/ErrorResponse'
+        - type: object
+          required: [transferId, transferStatus]
+          properties:
+            transferId:
+              $ref: '../common/common-schemas.yaml#/components/schemas/Id'
+            transferStatus:
+              $ref: '#/components/schemas/TransferStatus'
 
     RequestOperationId:
       type: string

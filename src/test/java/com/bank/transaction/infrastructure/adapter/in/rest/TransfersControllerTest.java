@@ -51,7 +51,7 @@ class TransfersControllerTest {
     private Clock clock;
 
     private Transfer completedTransfer() {
-        Transfer started = Transfer.start(new OperationId("op-1"), "acc-A", "acc-B", Money.of("100.00"),
+        Transfer started = Transfer.start(new OperationId("op-00001"), "acc-A", "acc-B", Money.of("100.00"),
                 TransferKind.OWN, "pago", "cust-A", "cust-B", "cust-A", TransactionFixtures.CLOCK);
         Transfer sourceDebited = started.sourceDebited(TransactionId.newId(), TransactionFixtures.CLOCK);
         return sourceDebited.completed(TransactionId.newId(), TransactionFixtures.CLOCK);
@@ -67,7 +67,7 @@ class TransfersControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "sourceAccountId": "acc-A",
                           "targetAccountId": "acc-B",
                           "amount": 100.00
@@ -88,7 +88,7 @@ class TransfersControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "sourceAccountId": "acc-A",
                           "targetAccountId": "acc-B",
                           "amount": 100.00
@@ -101,14 +101,14 @@ class TransfersControllerTest {
     @Test
     void aTransferStillInProgressReturns202() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT);
-        Transfer started = TransactionFixtures.startedTransfer("op-1", "acc-A", "acc-B", "100.00");
+        Transfer started = TransactionFixtures.startedTransfer("op-00001", "acc-A", "acc-B", "100.00");
         given(startTransferUseCase.execute(any())).willReturn(Single.just(started));
 
         client.post().uri("/api/v1/transfers")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "sourceAccountId": "acc-A",
                           "targetAccountId": "acc-B",
                           "amount": 100.00
@@ -123,14 +123,14 @@ class TransfersControllerTest {
     @Test
     void aCompensatedTransferReturns422WithTheTransferIdAndStatus() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT);
-        Transfer compensated = TransactionFixtures.compensatedTransfer("op-1", "acc-A", "acc-B", "100.00");
+        Transfer compensated = TransactionFixtures.compensatedTransfer("op-00001", "acc-A", "acc-B", "100.00");
         given(startTransferUseCase.execute(any())).willReturn(Single.just(compensated));
 
         client.post().uri("/api/v1/transfers")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "sourceAccountId": "acc-A",
                           "targetAccountId": "acc-B",
                           "amount": 100.00
@@ -147,7 +147,7 @@ class TransfersControllerTest {
     @Test
     void aFailedTransferReturns422() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT);
-        Transfer started = Transfer.start(new OperationId("op-1"), "acc-A", "acc-B", Money.of("100.00"),
+        Transfer started = Transfer.start(new OperationId("op-00001"), "acc-A", "acc-B", Money.of("100.00"),
                 TransferKind.OWN, "pago", "cust-A", "cust-B", "cust-A", TransactionFixtures.CLOCK);
         Transfer failed = started.failed(new FailureReason("INSUFFICIENT_FUNDS", "saldo insuficiente"),
                 TransactionFixtures.CLOCK);
@@ -157,7 +157,7 @@ class TransfersControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "sourceAccountId": "acc-A",
                           "targetAccountId": "acc-B",
                           "amount": 100.00
@@ -180,7 +180,7 @@ class TransfersControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "sourceAccountId": "missing-account",
                           "targetAccountId": "acc-B",
                           "amount": 100.00
@@ -193,7 +193,7 @@ class TransfersControllerTest {
     @Test
     void listTransfersReturnsWhateverTheUseCaseStreams() {
         given(findTransfersUseCase.execute(any()))
-                .willReturn(Flowable.just(TransactionFixtures.startedTransfer("op-1", "acc-A", "acc-B", "100.00")));
+                .willReturn(Flowable.just(TransactionFixtures.startedTransfer("op-00001", "acc-A", "acc-B", "100.00")));
 
         client.get().uri("/api/v1/transfers?accountId=acc-A")
                 .exchange()
@@ -203,7 +203,7 @@ class TransfersControllerTest {
 
     @Test
     void getTransferReturnsTheTransfer() {
-        Transfer transfer = TransactionFixtures.startedTransfer("op-1", "acc-A", "acc-B", "100.00");
+        Transfer transfer = TransactionFixtures.startedTransfer("op-00001", "acc-A", "acc-B", "100.00");
         given(findTransferUseCase.execute(eq(transfer.id()))).willReturn(Single.just(transfer));
 
         client.get().uri("/api/v1/transfers/{id}", transfer.id().value())

@@ -47,7 +47,7 @@ class DepositsAndWithdrawalsControllerTest {
     @Test
     void aFreshlyCompletedDepositReturns201() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT.minusSeconds(1));
-        Transaction completed = TransactionFixtures.completedWithdrawal("op-1", "acc-1", "cust-A", "100.00",
+        Transaction completed = TransactionFixtures.completedWithdrawal("op-00001", "acc-1", "cust-A", "100.00",
                 "900.00");
         given(registerDepositUseCase.execute(any())).willReturn(Single.just(completed));
 
@@ -55,7 +55,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "accountId": "acc-1",
                           "amount": 100.00
                         }
@@ -70,7 +70,7 @@ class DepositsAndWithdrawalsControllerTest {
     @Test
     void aReplayedAlreadyCompletedDepositReturns200() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT.plusSeconds(60));
-        Transaction completed = TransactionFixtures.completedWithdrawal("op-1", "acc-1", "cust-A", "100.00",
+        Transaction completed = TransactionFixtures.completedWithdrawal("op-00001", "acc-1", "cust-A", "100.00",
                 "900.00");
         given(registerDepositUseCase.execute(any())).willReturn(Single.just(completed));
 
@@ -78,7 +78,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "accountId": "acc-1",
                           "amount": 100.00
                         }
@@ -90,14 +90,14 @@ class DepositsAndWithdrawalsControllerTest {
     @Test
     void aStillPendingDepositReturns202() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT);
-        Transaction pending = TransactionFixtures.pendingDeposit("op-1", "acc-1", "cust-A", "100.00");
+        Transaction pending = TransactionFixtures.pendingDeposit("op-00001", "acc-1", "cust-A", "100.00");
         given(registerDepositUseCase.execute(any())).willReturn(Single.just(pending));
 
         client.post().uri("/api/v1/deposits")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "accountId": "acc-1",
                           "amount": 100.00
                         }
@@ -111,7 +111,7 @@ class DepositsAndWithdrawalsControllerTest {
     @Test
     void aRejectedDepositReturns422WithTheTransactionIdAndTheAccountsReasonCode() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT);
-        Transaction failed = TransactionFixtures.failedWithdrawal("op-1", "acc-1", "cust-A", "100.00",
+        Transaction failed = TransactionFixtures.failedWithdrawal("op-00001", "acc-1", "cust-A", "100.00",
                 "ACCOUNT_INACTIVE", "cuenta inactiva");
         given(registerDepositUseCase.execute(any())).willReturn(Single.just(failed));
 
@@ -119,7 +119,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "accountId": "acc-1",
                           "amount": 100.00
                         }
@@ -141,7 +141,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "accountId": "missing-account",
                           "amount": 100.00
                         }
@@ -162,7 +162,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "accountId": "acc-1",
                           "amount": 100.00
                         }
@@ -179,7 +179,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-1",
+                          "operationId": "op-00001",
                           "amount": 100.00
                         }
                         """)
@@ -195,7 +195,7 @@ class DepositsAndWithdrawalsControllerTest {
     @Test
     void aFreshlyCompletedWithdrawalReturns201() {
         given(clock.instant()).willReturn(FIXTURE_CREATED_AT.minusSeconds(1));
-        Transaction completed = TransactionFixtures.completedWithdrawal("op-2", "acc-1", "cust-A", "50.00",
+        Transaction completed = TransactionFixtures.completedWithdrawal("op-00002", "acc-1", "cust-A", "50.00",
                 "850.00");
         given(registerWithdrawalUseCase.execute(any())).willReturn(Single.just(completed));
 
@@ -203,7 +203,7 @@ class DepositsAndWithdrawalsControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
-                          "operationId": "op-2",
+                          "operationId": "op-00002",
                           "accountId": "acc-1",
                           "amount": 50.00
                         }
