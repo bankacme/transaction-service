@@ -1,0 +1,51 @@
+# Replaces src/main/resources/application.yml during the tests — it does NOT merge with
+# it, so every property a test needs has to be repeated here (same note account-service's
+# own test application.yml carries, confirmed the hard way in bank-spike's step 0.6).
+#
+# Needs a real local Mongo running as a single-node replica set (--replSet rs0):
+# MongoUnitOfWorkAdapterTest opens a real transaction, which only works against a replica
+# set, not a standalone mongod.
+spring:
+  application:
+    name: transaction-service
+  cloud:
+    config:
+      enabled: false
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/bank_transaction_test?directConnection=true
+      auto-index-creation: false
+
+bank:
+  zone: America/Lima
+  clients:
+    account-service:
+      # Not actually called from most @SpringBootTests (AccountMovementClient/AccountLookupClient
+      # are just two more beans in the same context, same situation account-service's own
+      # customer-service.base-url documents) — no default in the clients themselves, so this
+      # still has to resolve to something for the context to start.
+      base-url: http://localhost:9999
+
+transaction:
+  recovery:
+    pending-minutes: 2
+    cron: "0 * * * * *"
+
+transfer:
+  compensation:
+    max-attempts: 5
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      account-service:
+        sliding-window-size: 4
+        minimum-number-of-calls: 4
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 2
+  timelimiter:
+    instances:
+      account-service:
+        timeout-duration: 2s
+        cancel-running-future: true
