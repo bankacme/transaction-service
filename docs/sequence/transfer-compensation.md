@@ -27,9 +27,9 @@ sequenceDiagram
     UC->>UOW: saveTransferAndTransaction(COMPENSATING, IN FAILED)
 
     Note over UC,Acc: Paso 3 — reversa del retiro
-    UC->>AM: reverse({op}-OUT-REV, origen)
-    AM->>Acc: POST /accounts/{origen}/movements/{op}-OUT-REV/reversal
-    Note over AM,Acc: ⚠ account-service espera aquí la operationId ORIGINAL ({op}-OUT),<br/>ver "Bug abierto" abajo
+    UC->>AM: reverse({op}-OUT, origen)
+    AM->>Acc: POST /accounts/{origen}/movements/{op}-OUT/reversal
+    Note over AM,Acc: la ruta lleva la operationId ORIGINAL;<br/>{op}-OUT-REV solo se usa en la anotación local
     alt Reversa aplicada
         Acc-->>AM: 200 (saldo, comisión y contador devueltos)
         AM-->>UC: MovementOutcome aplicado
@@ -58,17 +58,11 @@ sequenceDiagram
 
 ## Notas
 
-- **⚠ Bug abierto — la reversa nunca encuentra la operación.** `StartTransferUseCaseImpl.reverseDebit`
-  y `RecoverPendingOperationsUseCaseImpl.retryReversal` llaman a
-  `reverse(debitCompleted.operationId().forReversal(), ...)`, y `AccountMovementClient` pone ese valor
-  en la ruta: `/movements/{op}-OUT-REV/reversal`. Pero el contrato de `account-service` dice que ese
-  segmento es la `operationId` de la operación **original** (`{op}-OUT`), y
-  `ReverseMovementUseCaseImpl` la busca en `account_operations`. Resultado contra el servicio real:
-  404 `OPERATION_NOT_FOUND` en cada intento → `REVERSAL_FAILED` → a los 5 intentos
-  `COMPENSATION_FAILED`, con el dinero fuera del origen. Las pruebas no lo ven porque
-  `TestAdapters` acepta cualquier `operationId` y `AccountMovementClientTest` llama al cliente
-  directamente con `op-1`. Corrección: pasar `debitCompleted.operationId()` a `reverse(...)` en los
-  dos casos de uso y dejar `forReversal()` solo para el `TransactionReversal` que se anota.
+- **La ruta de la reversa lleva la operación original.** `reverse(debitCompleted.operationId(), ...)`
+  envía `{op}-OUT` en `/movements/{operationId}/reversal`, que es lo que `ReverseMovementUseCaseImpl`
+  de `account-service` busca en `account_operations`. `{op}-OUT-REV` (`forReversal()`) solo se usa como
+  identificador del `TransactionReversal` que se anota en la pata local. (Corregido tras R10: antes se
+  enviaba `{op}-OUT-REV` y contra el servicio real cada intento daba 404 → `COMPENSATION_FAILED`.)
 
 - **La reversa es idempotente**: `account-service` identifica la reversa por la `operationId` de la
   pata original (`{op}-OUT`) y no la aplica dos veces; por eso el reintento es seguro. Devuelve el

@@ -235,7 +235,7 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
     private Single<TransferStatus> retryReversal(Transfer transfer) {
         return transactionRepositoryPort.findByOperationId(transfer.operationId().forTransferOut())
                 .flatMapSingle(debitCompleted -> accountMovementPort
-                        .reverse(debitCompleted.operationId().forReversal(), transfer.sourceAccountId())
+                        .reverse(debitCompleted.operationId(), transfer.sourceAccountId())
                         .flatMap(outcome -> outcome.applied()
                                 ? markCompensated(transfer, debitCompleted)
                                 : markCompensationAttemptFailed(transfer, debitCompleted, outcome)))

@@ -56,6 +56,11 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-config</artifactId>
         </dependency>
+        <!-- P2 (2.1): registro en Eureka; se desactiva en las pruebas (eureka.client.enabled) -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
 
         <!-- Outbound REST call to account-service (R7), with a circuit breaker -->
         <dependency>

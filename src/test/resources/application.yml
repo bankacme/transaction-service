@@ -49,3 +49,8 @@ resilience4j:
       account-service:
         timeout-duration: 2s
         cancel-running-future: true
+
+# Sin registro en Eureka durante las pruebas.
+eureka:
+  client:
+    enabled: false

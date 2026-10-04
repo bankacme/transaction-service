@@ -310,7 +310,7 @@ class RecoverPendingOperationsUseCaseImplTest {
     @Test
     void aFirstFailedReversalAttemptStaysCompensatingWithoutGivingUp() {
         Transfer transfer = buildCompensatingTransfer(0);
-        accountMovementPort.willReverse("op-1-OUT-REV", MovementOutcome.rejected(new OperationId("op-1-OUT-REV"),
+        accountMovementPort.willReverse("op-1-OUT", MovementOutcome.rejected(new OperationId("op-1-OUT"),
                 new FailureReason("ACCOUNT_INACTIVE", "origen tambien inactivo")));
 
         RecoveryResult result = useCase.execute(null).blockingGet();
@@ -327,7 +327,7 @@ class RecoverPendingOperationsUseCaseImplTest {
         // Ya tiene un intento fallido registrado (compensationAttempts = 1); este reintento es
         // el segundo, que alcanza MAX_COMPENSATION_ATTEMPTS = 2 y da por terminada la saga.
         Transfer transfer = buildCompensatingTransfer(1);
-        accountMovementPort.willReverse("op-1-OUT-REV", MovementOutcome.rejected(new OperationId("op-1-OUT-REV"),
+        accountMovementPort.willReverse("op-1-OUT", MovementOutcome.rejected(new OperationId("op-1-OUT"),
                 new FailureReason("ACCOUNT_INACTIVE", "origen tambien inactivo")));
 
         RecoveryResult result = useCase.execute(null).blockingGet();

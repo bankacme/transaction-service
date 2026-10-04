@@ -159,7 +159,7 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
     }
 
     private Single<Transfer> reverseDebit(Transfer compensating, Transaction debitCompleted) {
-        return accountMovementPort.reverse(debitCompleted.operationId().forReversal(), compensating.sourceAccountId())
+        return accountMovementPort.reverse(debitCompleted.operationId(), compensating.sourceAccountId())
                 .flatMap(reversalOutcome -> reversalOutcome.applied()
                         ? markReversed(compensating, debitCompleted)
                         : markReversalAttemptFailed(compensating, debitCompleted, reversalOutcome));

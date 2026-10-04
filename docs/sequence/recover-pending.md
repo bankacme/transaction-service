@@ -69,8 +69,8 @@ sequenceDiagram
             end
         else COMPENSATING — falta devolver el retiro
             UC->>TxRepo: findByOperationId({op}-OUT)
-            UC->>AM: reverse({op}-OUT-REV, origen)
-            AM->>Acc: POST /accounts/{origen}/movements/{op}-OUT-REV/reversal
+            UC->>AM: reverse({op}-OUT, origen)
+            AM->>Acc: POST /accounts/{origen}/movements/{op}-OUT/reversal
             alt Reversa aplicada
                 UC->>UOW: saveTransferAndTransaction(COMPENSATED, OUT REVERSED)
                 UC->>Evt: publish(TransferFailed)
@@ -98,8 +98,8 @@ sequenceDiagram
   sabe en qué paso de la saga quedó.
 - **Aislamiento por elemento:** un error en un movimiento o una transferencia no corta la corrida
   (`onErrorResumeNext` por elemento); queda para la siguiente.
-- **La reversa usa `{op}-OUT-REV` en la ruta:** mismo bug abierto descrito en
-  `transfer-compensation.md` (`account-service` espera la `operationId` original).
+- **La reversa usa la `operationId` original (`{op}-OUT`) en la ruta**, igual que en
+  `transfer-compensation.md`; `{op}-OUT-REV` queda solo en la anotación local.
 - **Pendientes conocidos:**
   - En los contadores, un movimiento que falla por error técnico se cuenta como "fallido" aunque
     siga `PENDING`.

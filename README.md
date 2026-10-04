@@ -34,8 +34,10 @@ P1/P2, vía eventos en P3. Recibe registros de `credit-service`.
 - `docs/uml/transaction-domain.md`: modelo de dominio (`Transaction`, `Transfer`, VOs, `TransferPolicy`) y diagramas de estados de `Transfer` y `Transaction`.
 - `docs/sequence/`: depósito con comisión e idempotencia (`register-deposit.md`), transferencia exitosa (`transfer-success.md`), transferencia con compensación (`transfer-compensation.md`), registro de un pago de crédito (`record-credit-payment.md`) y recuperación de pendientes (`recover-pending.md`).
 
+## Correcciones posteriores al cierre
+- **Reversa con `operationId` original:** `StartTransferUseCaseImpl.reverseDebit` y `RecoverPendingOperationsUseCaseImpl.retryReversal` enviaban `{op}-OUT-REV` en la ruta `/movements/{operationId}/reversal`, pero `account-service` busca la `operationId` original (`{op}-OUT`); contra el servicio real la compensación terminaba siempre en `COMPENSATION_FAILED`. Ahora se envía `{op}-OUT` y `{op}-OUT-REV` queda solo para el `TransactionReversal` anotado. Pruebas ajustadas (`StartTransferUseCaseImplTest`, `RecoverPendingOperationsUseCaseImplTest`).
+
 ## Pendientes conocidos (detectados al dibujar los diagramas)
-- **Reversa con `operationId` equivocada:** `StartTransferUseCaseImpl.reverseDebit` y `RecoverPendingOperationsUseCaseImpl.retryReversal` envían `{op}-OUT-REV` en la ruta `/movements/{operationId}/reversal`, pero `account-service` espera la `operationId` original (`{op}-OUT`). Contra el servicio real la compensación termina siempre en `COMPENSATION_FAILED`. Detalle en `docs/sequence/transfer-compensation.md`.
 - **Cuerpo del 422 de transferencia:** en la primera petición un rechazo sale como `ErrorResponse` simple (sin `transferId`/`transferStatus`) y un intento de reversa fallido responde 422 en vez de 202; solo la repetición devuelve `TransferRejected`.
 - **`POST /transactions/records`** no guarda `occurredAt` ni `payerCustomerId` del contrato (`Transaction.record` no los recibe).
 - **Recuperación:** una `Transfer` en `SOURCE_DEBITED` sin pata `{op}-IN` guardada no se recupera.

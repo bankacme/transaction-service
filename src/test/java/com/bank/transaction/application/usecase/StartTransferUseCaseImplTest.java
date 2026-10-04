@@ -94,9 +94,11 @@ class StartTransferUseCaseImplTest {
 
         Transfer saved = transferRepository.findByOperationId(new OperationId("op-1")).blockingGet();
         assertThat(saved.status()).isEqualTo(TransferStatus.COMPENSATED);
-        assertThat(accountMovementPort.reversedOperationIds()).containsExactly("op-1-OUT-REV");
+        // account-service busca la operacion ORIGINAL; "-REV" solo identifica la anotacion local.
+        assertThat(accountMovementPort.reversedOperationIds()).containsExactly("op-1-OUT");
         Transaction debit = transactionRepository.findByOperationId(new OperationId("op-1-OUT")).blockingGet();
         assertThat(debit.status()).isEqualTo(TransactionStatus.REVERSED);
+        assertThat(debit.reversal().operationId().value()).isEqualTo("op-1-OUT-REV");
         assertThat(eventPublisherPort.transferEvents()).hasSize(1);
         TransferFailed event = (TransferFailed) eventPublisherPort.transferEvents().get(0);
         assertThat(event.status()).isEqualTo("COMPENSATED");
@@ -107,8 +109,8 @@ class StartTransferUseCaseImplTest {
         accountMovementPort.willApply("op-1-IN",
                 MovementOutcome.rejected(new OperationId("op-1-IN"),
                         new FailureReason("ACCOUNT_INACTIVE", "destino inactivo")));
-        accountMovementPort.willReverse("op-1-OUT-REV",
-                MovementOutcome.rejected(new OperationId("op-1-OUT-REV"),
+        accountMovementPort.willReverse("op-1-OUT",
+                MovementOutcome.rejected(new OperationId("op-1-OUT"),
                         new FailureReason("ACCOUNT_INACTIVE", "origen tambien inactivo")));
 
         useCase.execute(command("op-1", "acc-A", "acc-B")).test()
