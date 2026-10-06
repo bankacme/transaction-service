@@ -72,6 +72,7 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
     private final TransactionEventPublisherPort eventPublisherPort;
     private final int defaultOlderThanMinutes;
     private final int maxCompensationAttempts;
+    private final TransferLegs transferLegs;
     private final Clock clock;
 
     public RecoverPendingOperationsUseCaseImpl(TransactionRepositoryPort transactionRepositoryPort,
@@ -85,6 +86,7 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
         this.eventPublisherPort = eventPublisherPort;
         this.defaultOlderThanMinutes = defaultOlderThanMinutes;
         this.maxCompensationAttempts = maxCompensationAttempts;
+        this.transferLegs = new TransferLegs(transactionRepositoryPort, unitOfWorkPort, clock);
         this.clock = clock;
     }
 
@@ -162,7 +164,7 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
         return transactionRepositoryPort.findByOperationId(transfer.operationId().forTransferOut())
                 .switchIfEmpty(createMissingDebitPending(transfer))
                 .flatMap(debitTx -> debitTx.status() == TransactionStatus.COMPLETED
-                        ? advanceToSourceDebited(transfer, debitTx)
+                        ? advanceToSourceDebited(transfer, debitTx, null)
                         : retryDebitApplication(transfer, debitTx));
     }
 
@@ -182,13 +184,16 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
         return accountMovementPort.apply(debitPending.operationId(), transfer.sourceAccountId(),
                         TransactionType.TRANSFER_OUT, transfer.amount(), today)
                 .flatMap(outcome -> outcome.applied()
-                        ? advanceToSourceDebited(transfer, debitPending.complete(outcome.resultingBalance(), clock))
+                        ? advanceToSourceDebited(transfer, debitPending.complete(outcome.resultingBalance(), clock),
+                                outcome)
                         : failStartedTransfer(transfer, debitPending, outcome));
     }
 
-    private Single<TransferStatus> advanceToSourceDebited(Transfer transfer, Transaction debitCompleted) {
+    /** {@code outcome} es null si el débito ya estaba COMPLETED (su comisión ya se guardó entonces). */
+    private Single<TransferStatus> advanceToSourceDebited(Transfer transfer, Transaction debitCompleted,
+                                                          MovementOutcome outcome) {
         Transfer sourceDebited = transfer.sourceDebited(debitCompleted.id(), clock);
-        return unitOfWorkPort.saveTransferAndTransaction(sourceDebited, debitCompleted).map(Transfer::status);
+        return transferLegs.saveApplied(sourceDebited, debitCompleted, outcome).map(Transfer::status);
     }
 
     /** STARTED -&gt; FAILED (regla 8): el débito fue rechazado, no hay nada que compensar
@@ -235,7 +240,7 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
                                                       MovementOutcome outcome) {
         Transaction creditCompleted = creditPending.complete(outcome.resultingBalance(), clock);
         Transfer completed = transfer.completed(creditCompleted.id(), clock);
-        return unitOfWorkPort.saveTransferAndTransaction(completed, creditCompleted)
+        return transferLegs.saveApplied(completed, creditCompleted, outcome)
                 .flatMap(saved -> eventPublisherPort.publish(TransferCompleted.from(saved))
                         .andThen(Single.just(saved.status())));
     }
@@ -258,11 +263,7 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
     }
 
     private Single<TransferStatus> markCompensated(Transfer transfer, Transaction debitCompleted) {
-        TransactionReversal reversal = new TransactionReversal(debitCompleted.operationId().forReversal(),
-                ReversalOutcome.REVERSED, null);
-        Transaction reversed = debitCompleted.markReversed(reversal, clock);
-        Transfer compensated = transfer.compensated(clock);
-        return unitOfWorkPort.saveTransferAndTransaction(compensated, reversed)
+        return transferLegs.saveCompensated(transfer.compensated(clock), debitCompleted)
                 .flatMap(saved -> eventPublisherPort.publish(TransferFailed.from(saved))
                         .andThen(Single.just(saved.status())));
     }

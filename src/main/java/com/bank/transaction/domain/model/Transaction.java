@@ -79,6 +79,26 @@ public record Transaction(
                 now);
     }
 
+    /**
+     * Comisión {@code FEE} que cobró la cuenta al aplicar {@code parent} (data-model 2.3, 3a y 5a):
+     * nace COMPLETED con la operationId {@code <op del padre>-FEE}, enlazada por
+     * {@code parentTransactionId}, con el mismo {@code transferId} y el mismo {@code occurredAt} que
+     * el padre (comparten el instante; el orden entre ambos lo da el id). Si el padre se revierte, la
+     * comisión también ({@link #markReversed}).
+     */
+    public static Transaction feeOf(Transaction parent, Money fee, Money resultingBalance, String description,
+                                    Clock clock) {
+        requirePositiveAmount(fee);
+        requireValidTypeForProduct(parent.product().productType(), TransactionType.FEE);
+        if (resultingBalance == null) {
+            throw new IllegalArgumentException("resultingBalance is required for a fee");
+        }
+        Instant now = clock.instant();
+        return new Transaction(TransactionId.newId(), parent.operationId().forFee(), parent.product(),
+                parent.customerId(), TransactionType.FEE, fee, resultingBalance, TransactionStatus.COMPLETED, null,
+                parent.transferId(), parent.id(), null, description, null, parent.occurredAt(), now, now);
+    }
+
     /** PENDING -&gt; COMPLETED, con el saldo que informó account-service. */
     public Transaction complete(Money resultingBalance, Clock clock) {
         requirePending();

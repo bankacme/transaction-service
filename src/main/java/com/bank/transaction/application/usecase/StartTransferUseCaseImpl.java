@@ -5,6 +5,7 @@ import com.bank.transaction.application.port.in.StartTransferUseCase;
 import com.bank.transaction.application.port.out.AccountLookupPort;
 import com.bank.transaction.application.port.out.AccountMovementPort;
 import com.bank.transaction.application.port.out.TransactionEventPublisherPort;
+import com.bank.transaction.application.port.out.TransactionRepositoryPort;
 import com.bank.transaction.application.port.out.TransferRepositoryPort;
 import com.bank.transaction.application.port.out.UnitOfWorkPort;
 import com.bank.transaction.domain.event.TransferCompleted;
@@ -42,16 +43,19 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
     private final AccountMovementPort accountMovementPort;
     private final UnitOfWorkPort unitOfWorkPort;
     private final TransactionEventPublisherPort eventPublisherPort;
+    private final TransferLegs transferLegs;
     private final Clock clock;
 
     public StartTransferUseCaseImpl(TransferRepositoryPort transferRepositoryPort,
-            AccountLookupPort accountLookupPort, AccountMovementPort accountMovementPort,
-            UnitOfWorkPort unitOfWorkPort, TransactionEventPublisherPort eventPublisherPort, Clock clock) {
+            TransactionRepositoryPort transactionRepositoryPort, AccountLookupPort accountLookupPort,
+            AccountMovementPort accountMovementPort, UnitOfWorkPort unitOfWorkPort,
+            TransactionEventPublisherPort eventPublisherPort, Clock clock) {
         this.transferRepositoryPort = transferRepositoryPort;
         this.accountLookupPort = accountLookupPort;
         this.accountMovementPort = accountMovementPort;
         this.unitOfWorkPort = unitOfWorkPort;
         this.eventPublisherPort = eventPublisherPort;
+        this.transferLegs = new TransferLegs(transactionRepositoryPort, unitOfWorkPort, clock);
         this.clock = clock;
     }
 
@@ -117,8 +121,8 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
     private Single<Transfer> onDebitApplied(Transfer transfer, Transaction debitPending,
                                              MovementOutcome debitOutcome, AccountSnapshot target) {
         Transaction debitCompleted = debitPending.complete(debitOutcome.resultingBalance(), clock);
-        return unitOfWorkPort.saveTransferAndTransaction(transfer.sourceDebited(debitCompleted.id(), clock),
-                        debitCompleted)
+        return transferLegs.saveApplied(transfer.sourceDebited(debitCompleted.id(), clock), debitCompleted,
+                        debitOutcome)
                 .flatMap(sourceDebitedTransfer -> credit(sourceDebitedTransfer, debitCompleted, target));
     }
 
@@ -140,7 +144,7 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
                                               MovementOutcome creditOutcome) {
         Transaction creditCompleted = creditPending.complete(creditOutcome.resultingBalance(), clock);
         Transfer completedTransfer = transfer.completed(creditCompleted.id(), clock);
-        return unitOfWorkPort.saveTransferAndTransaction(completedTransfer, creditCompleted)
+        return transferLegs.saveApplied(completedTransfer, creditCompleted, creditOutcome)
                 .flatMap(saved -> eventPublisherPort.publish(TransferCompleted.from(saved))
                         .andThen(Single.just(saved)));
     }
@@ -164,10 +168,7 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
     }
 
     private Single<Transfer> markReversed(Transfer compensating, Transaction debitCompleted) {
-        TransactionReversal reversal = new TransactionReversal(debitCompleted.operationId().forReversal(),
-                ReversalOutcome.REVERSED, null);
-        Transaction reversed = debitCompleted.markReversed(reversal, clock);
-        return unitOfWorkPort.saveTransferAndTransaction(compensating.compensated(clock), reversed);
+        return transferLegs.saveCompensated(compensating.compensated(clock), debitCompleted);
     }
 
     private Single<Transfer> markReversalAttemptFailed(Transfer compensating, Transaction debitCompleted,

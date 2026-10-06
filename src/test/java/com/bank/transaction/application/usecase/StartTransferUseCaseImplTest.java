@@ -20,6 +20,7 @@ import com.bank.transaction.domain.model.MovementOutcome;
 import com.bank.transaction.domain.model.OperationId;
 import com.bank.transaction.domain.model.Transaction;
 import com.bank.transaction.domain.model.TransactionStatus;
+import com.bank.transaction.domain.model.TransactionType;
 import com.bank.transaction.domain.model.Transfer;
 import com.bank.transaction.domain.model.TransferStatus;
 import java.math.BigDecimal;
@@ -43,7 +44,7 @@ class StartTransferUseCaseImplTest {
     private final FakeAccountMovementPort accountMovementPort = new FakeAccountMovementPort();
     private final RecordingEventPublisherPort eventPublisherPort = new RecordingEventPublisherPort();
     private final StartTransferUseCaseImpl useCase = new StartTransferUseCaseImpl(transferRepository,
-            accountLookupPort, accountMovementPort,
+            transactionRepository, accountLookupPort, accountMovementPort,
             new PassthroughUnitOfWorkPort(transferRepository, transactionRepository), eventPublisherPort, clock);
 
     private StartTransferCommand command(String operationIdValue, String source, String target) {
@@ -63,6 +64,61 @@ class StartTransferUseCaseImplTest {
         Transaction credit = transactionRepository.findByOperationId(new OperationId("op-1-IN")).blockingGet();
         assertThat(debit.status()).isEqualTo(TransactionStatus.COMPLETED);
         assertThat(credit.status()).isEqualTo(TransactionStatus.COMPLETED);
+    }
+
+    private static MovementOutcome appliedWithFee(String operationId, String balance) {
+        return MovementOutcome.applied(new OperationId(operationId), Money.of(new BigDecimal(balance)),
+                Money.of(new BigDecimal("2.00")));
+    }
+
+    @Test
+    void eachLegWithAFeeSavesItsFeeLinkedToTheLeg() {
+        // data-model 3a y 5a: <op>-OUT-FEE y <op>-IN-FEE, enlazadas a su pata y a la transferencia.
+        accountMovementPort.willApply("op-1-OUT", appliedWithFee("op-1-OUT", "898.00"));
+        accountMovementPort.willApply("op-1-IN", appliedWithFee("op-1-IN", "598.00"));
+
+        Transfer transfer = useCase.execute(command("op-1", "acc-A", "acc-B")).blockingGet();
+
+        Transaction debit = transactionRepository.findByOperationId(new OperationId("op-1-OUT")).blockingGet();
+        Transaction debitFee = transactionRepository.findByOperationId(new OperationId("op-1-OUT-FEE")).blockingGet();
+        assertThat(debitFee.type()).isEqualTo(TransactionType.FEE);
+        assertThat(debitFee.amount()).isEqualTo(Money.of(new BigDecimal("2.00")));
+        assertThat(debitFee.resultingBalance()).isEqualTo(Money.of(new BigDecimal("898.00")));
+        assertThat(debitFee.parentTransactionId()).isEqualTo(debit.id());
+        assertThat(debitFee.transferId()).isEqualTo(transfer.id());
+        assertThat(debitFee.occurredAt()).isEqualTo(debit.occurredAt());
+        assertThat(debitFee.status()).isEqualTo(TransactionStatus.COMPLETED);
+        Transaction credit = transactionRepository.findByOperationId(new OperationId("op-1-IN")).blockingGet();
+        Transaction creditFee = transactionRepository.findByOperationId(new OperationId("op-1-IN-FEE")).blockingGet();
+        assertThat(creditFee.parentTransactionId()).isEqualTo(credit.id());
+        assertThat(creditFee.product().productId()).isEqualTo("acc-B");
+    }
+
+    @Test
+    void aLegWithoutAFeeSavesNoFee() {
+        useCase.execute(command("op-1", "acc-A", "acc-B")).blockingGet();
+
+        assertThat(transactionRepository.findByOperationId(new OperationId("op-1-OUT-FEE")).isEmpty().blockingGet())
+                .isTrue();
+        assertThat(transactionRepository.findByOperationId(new OperationId("op-1-IN-FEE")).isEmpty().blockingGet())
+                .isTrue();
+    }
+
+    @Test
+    void compensatingTheDebitAlsoReversesItsFee() {
+        // data-model 7a: la cuenta devolvió monto y comisión, así que la FEE también queda REVERSED.
+        accountMovementPort.willApply("op-1-OUT", appliedWithFee("op-1-OUT", "898.00"));
+        accountMovementPort.willApply("op-1-IN", MovementOutcome.rejected(new OperationId("op-1-IN"),
+                new FailureReason("NOT_ALLOWED_DAY", "dia no permitido")));
+
+        Transfer transfer = useCase.execute(command("op-1", "acc-A", "acc-B")).blockingGet();
+
+        assertThat(transfer.status()).isEqualTo(TransferStatus.COMPENSATED);
+        assertThat(transactionRepository.findByOperationId(new OperationId("op-1-OUT")).blockingGet().status())
+                .isEqualTo(TransactionStatus.REVERSED);
+        Transaction debitFee = transactionRepository.findByOperationId(new OperationId("op-1-OUT-FEE")).blockingGet();
+        assertThat(debitFee.status()).isEqualTo(TransactionStatus.REVERSED);
+        assertThat(debitFee.reversal().operationId().value()).isEqualTo("op-1-OUT-REV");
     }
 
     @Test

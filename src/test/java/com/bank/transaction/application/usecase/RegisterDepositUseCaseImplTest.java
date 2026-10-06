@@ -78,6 +78,11 @@ class RegisterDepositUseCaseImplTest {
         TransactionRegistered feeEvent = (TransactionRegistered) eventPublisherPort.transactionEvents().get(1);
         assertThat(feeEvent.type()).isEqualTo(TransactionType.FEE.name());
         assertThat(feeEvent.fee()).isNull();
+        // data-model 2.3: la comisión va enlazada al padre y comparte su instante.
+        Transaction fee = transactionRepository.findByOperationId(new OperationId("op-1-FEE")).blockingGet();
+        assertThat(fee.parentTransactionId()).isEqualTo(parent.id());
+        assertThat(fee.occurredAt()).isEqualTo(parent.occurredAt());
+        assertThat(fee.status()).isEqualTo(TransactionStatus.COMPLETED);
     }
 
     @Test

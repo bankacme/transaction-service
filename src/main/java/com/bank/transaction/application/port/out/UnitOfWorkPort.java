@@ -3,6 +3,7 @@ package com.bank.transaction.application.port.out;
 import com.bank.transaction.domain.model.Transaction;
 import com.bank.transaction.domain.model.Transfer;
 import io.reactivex.rxjava3.core.Single;
+import java.util.List;
 
 /**
  * La ficha (sección 4.2) describe este puerto como un genérico {@code inTransaction(Single<T>)}.
@@ -22,7 +23,15 @@ import io.reactivex.rxjava3.core.Single;
  */
 public interface UnitOfWorkPort {
 
-    Single<Transfer> saveTransferAndTransaction(Transfer transfer, Transaction transaction);
+    /**
+     * La {@code Transfer} y sus movimientos en una sola transacción: una pata con su comisión
+     * {@code FEE}, o al compensar, la pata revertida y su comisión revertida.
+     */
+    Single<Transfer> saveTransferAndTransactions(Transfer transfer, List<Transaction> transactions);
+
+    default Single<Transfer> saveTransferAndTransaction(Transfer transfer, Transaction transaction) {
+        return saveTransferAndTransactions(transfer, List.of(transaction));
+    }
 
     Single<Transaction> saveTransactionAndFee(Transaction transaction, Transaction fee);
 }

@@ -58,10 +58,11 @@ public class UseCaseConfig {
 
     @Bean
     public StartTransferUseCaseImpl startTransferUseCase(TransferRepositoryPort transferRepositoryPort,
-            AccountLookupPort accountLookupPort, AccountMovementPort accountMovementPort,
-            UnitOfWorkPort unitOfWorkPort, TransactionEventPublisherPort eventPublisherPort, Clock clock) {
-        return new StartTransferUseCaseImpl(transferRepositoryPort, accountLookupPort, accountMovementPort,
-                unitOfWorkPort, eventPublisherPort, clock);
+            TransactionRepositoryPort transactionRepositoryPort, AccountLookupPort accountLookupPort,
+            AccountMovementPort accountMovementPort, UnitOfWorkPort unitOfWorkPort,
+            TransactionEventPublisherPort eventPublisherPort, Clock clock) {
+        return new StartTransferUseCaseImpl(transferRepositoryPort, transactionRepositoryPort, accountLookupPort,
+                accountMovementPort, unitOfWorkPort, eventPublisherPort, clock);
     }
 
     @Bean

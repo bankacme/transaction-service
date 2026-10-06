@@ -16,6 +16,7 @@ import com.bank.transaction.domain.model.Transaction;
 import com.bank.transaction.domain.model.TransactionType;
 import com.bank.transaction.domain.model.Transfer;
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
 import java.math.BigDecimal;
@@ -166,8 +167,11 @@ public final class TestAdapters {
         }
 
         @Override
-        public Single<Transfer> saveTransferAndTransaction(Transfer transfer, Transaction transaction) {
-            return transactionRepositoryPort.save(transaction).flatMap(saved -> transferRepositoryPort.save(transfer));
+        public Single<Transfer> saveTransferAndTransactions(Transfer transfer, List<Transaction> transactions) {
+            return Flowable.fromIterable(transactions)
+                    .concatMapSingle(transactionRepositoryPort::save)
+                    .ignoreElements()
+                    .andThen(Single.defer(() -> transferRepositoryPort.save(transfer)));
         }
 
         @Override

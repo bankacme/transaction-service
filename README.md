@@ -45,6 +45,8 @@ P1/P2, vía eventos en P3. Recibe registros de `credit-service`.
     transferencia sigue `COMPENSATING`. Antes el caso de uso lanzaba una excepción y salía un
     `ErrorResponse` simple.
   - La recuperación crea la pata `{op}-IN` si una `Transfer` `SOURCE_DEBITED` quedó sin ella.
+  - **Comisiones de las patas** (detectado al probar report-service): cada pata aplicada se guarda con su `FEE` (`{op}-OUT-FEE` / `{op}-IN-FEE`) si la cuenta cobró una, en la misma transacción de Mongo que la `Transfer` (`UnitOfWorkPort.saveTransferAndTransactions`); al compensar, la comisión del débito pasa también a `REVERSED`. La lógica compartida por la saga y la recuperación está en `TransferLegs`. Antes el saldo bajaba 2.00 y el historial no lo explicaba.
+  - Toda comisión (también la de depósitos y retiros) nace con `Transaction.feeOf`: `parentTransactionId` del movimiento que la generó, su `transferId` y su mismo `occurredAt` (data-model 2.3). Antes la de depósitos/retiros no llevaba el enlace al padre.
 
 ## Pendientes conocidos (detectados al dibujar los diagramas)
 - **`POST /transactions/records`** no guarda `occurredAt` ni `payerCustomerId` del contrato (`Transaction.record` no los recibe).

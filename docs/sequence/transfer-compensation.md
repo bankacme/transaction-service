@@ -70,6 +70,7 @@ sequenceDiagram
   pata original (`{op}-OUT`) y no la aplica dos veces; por eso el reintento es seguro. Devuelve el
   saldo, la comisión que hubiera cobrado y el contador de movimientos del mes, aunque la cuenta ya
   esté `INACTIVE`.
+- **La comisión del retiro también se revierte.** Si la cuenta cobró comisión por la pata de salida, `{op}-OUT-FEE` pasa a `REVERSED` junto con la pata y la `Transfer` (`TransferLegs.saveCompensated`, una sola transacción de Mongo): la cuenta devolvió monto y comisión.
 - **La pata de salida no se borra**: queda `REVERSED` con su `reversal` anotado; el historial del
   origen muestra el retiro y su reversa (regla 13, historial inmutable).
 - **Retiro rechazado (paso 1).** Si el que falla es el retiro, no hay nada que compensar: la

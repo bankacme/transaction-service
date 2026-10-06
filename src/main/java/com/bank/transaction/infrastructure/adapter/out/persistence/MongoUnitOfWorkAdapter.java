@@ -9,9 +9,11 @@ import com.bank.transaction.infrastructure.mapper.TransferDocumentMapper;
 import com.bank.transaction.infrastructure.support.RxJavaReactorBridge;
 import com.mongodb.MongoException;
 import io.reactivex.rxjava3.core.Single;
+import java.util.List;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.reactive.TransactionalOperator;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -59,8 +61,8 @@ public class MongoUnitOfWorkAdapter implements UnitOfWorkPort {
     }
 
     @Override
-    public Single<Transfer> saveTransferAndTransaction(Transfer transfer, Transaction transaction) {
-        return attemptTransferAndTransaction(transfer, transaction, MAX_ATTEMPTS);
+    public Single<Transfer> saveTransferAndTransactions(Transfer transfer, List<Transaction> transactions) {
+        return attemptTransferAndTransactions(transfer, List.copyOf(transactions), MAX_ATTEMPTS);
     }
 
     @Override
@@ -68,19 +70,21 @@ public class MongoUnitOfWorkAdapter implements UnitOfWorkPort {
         return attemptTransactionAndFee(transaction, fee, MAX_ATTEMPTS);
     }
 
-    private Single<Transfer> attemptTransferAndTransaction(Transfer transfer, Transaction transaction,
-                                                             int attemptsLeft) {
-        Mono<Transfer> twoWriteChain = mongoTemplate.save(transferMapper.toDocument(transfer))
-                .flatMap(savedTransferDocument -> mongoTemplate.save(transactionMapper.toDocument(transaction))
-                        .thenReturn(transferMapper.toDomain(savedTransferDocument)));
-        Mono<Transfer> transactional = transactionalOperator.transactional(twoWriteChain);
+    /** La Transfer primero (lleva @Version) y luego cada movimiento, en orden, en una sola transacción. */
+    private Single<Transfer> attemptTransferAndTransactions(Transfer transfer, List<Transaction> transactions,
+                                                              int attemptsLeft) {
+        Mono<Transfer> writeChain = mongoTemplate.save(transferMapper.toDocument(transfer))
+                .flatMap(savedTransferDocument -> Flux.fromIterable(transactions)
+                        .concatMap(transaction -> mongoTemplate.save(transactionMapper.toDocument(transaction)))
+                        .then(Mono.fromSupplier(() -> transferMapper.toDomain(savedTransferDocument))));
+        Mono<Transfer> transactional = transactionalOperator.transactional(writeChain);
         return RxJavaReactorBridge.toSingle(transactional)
                 .onErrorResumeNext(error -> {
                     if (!isTransientTransactionError(error)) {
                         return Single.error(error);
                     }
                     if (attemptsLeft > 1) {
-                        return attemptTransferAndTransaction(transfer, transaction, attemptsLeft - 1);
+                        return attemptTransferAndTransactions(transfer, transactions, attemptsLeft - 1);
                     }
                     return Single.error(giveUp());
                 });

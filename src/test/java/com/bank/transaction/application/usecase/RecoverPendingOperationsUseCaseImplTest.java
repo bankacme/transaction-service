@@ -332,6 +332,37 @@ class RecoverPendingOperationsUseCaseImplTest {
     }
 
     @Test
+    void compensatingFromRecoveryAlsoReversesTheDebitFee() {
+        Transfer transfer = buildCompensatingTransfer(0);
+        Transaction debit = transactionRepository.findByOperationId(new OperationId("op-1-OUT")).blockingGet();
+        transactionRepository.save(Transaction.feeOf(debit, Money.of(new BigDecimal("2.00")),
+                Money.of(new BigDecimal("498.00")), "Comision", oldClock)).blockingGet();
+
+        useCase.execute(null).blockingGet();
+
+        assertThat(transferRepository.findById(transfer.id()).blockingGet().status())
+                .isEqualTo(TransferStatus.COMPENSATED);
+        assertThat(transactionRepository.findByOperationId(new OperationId("op-1-OUT-FEE")).blockingGet().status())
+                .isEqualTo(TransactionStatus.REVERSED);
+    }
+
+    @Test
+    void aRecoveredDebitWithAFeeSavesItsFee() {
+        Transfer transfer = Transfer.start(new OperationId("op-1"), "acc-A", "acc-B", amount, TransferKind.OWN,
+                "transferencia", "cust-A", "cust-A", "cust-A", oldClock);
+        transferRepository.save(transfer).blockingGet();
+        accountMovementPort.willApply("op-1-OUT", MovementOutcome.applied(new OperationId("op-1-OUT"),
+                Money.of(new BigDecimal("398.00")), Money.of(new BigDecimal("2.00"))));
+
+        useCase.execute(null).blockingGet();
+
+        Transaction debit = transactionRepository.findByOperationId(new OperationId("op-1-OUT")).blockingGet();
+        Transaction fee = transactionRepository.findByOperationId(new OperationId("op-1-OUT-FEE")).blockingGet();
+        assertThat(fee.parentTransactionId()).isEqualTo(debit.id());
+        assertThat(fee.transferId()).isEqualTo(transfer.id());
+    }
+
+    @Test
     void aFirstFailedReversalAttemptStaysCompensatingWithoutGivingUp() {
         Transfer transfer = buildCompensatingTransfer(0);
         accountMovementPort.willReverse("op-1-OUT", MovementOutcome.rejected(new OperationId("op-1-OUT"),

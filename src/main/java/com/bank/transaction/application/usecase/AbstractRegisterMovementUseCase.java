@@ -97,8 +97,7 @@ abstract class AbstractRegisterMovementUseCase {
     }
 
     private Single<Transaction> saveWithFee(Transaction completed, MovementOutcome outcome) {
-        Transaction feeTx = Transaction.record(completed.operationId().forFee(), completed.product(),
-                completed.customerId(), TransactionType.FEE, outcome.fee(), outcome.resultingBalance(),
+        Transaction feeTx = Transaction.feeOf(completed, outcome.fee(), outcome.resultingBalance(),
                 "Comision por " + movementType, clock);
         return unitOfWorkPort.saveTransactionAndFee(completed, feeTx)
                 .flatMap(savedParent -> eventPublisherPort
