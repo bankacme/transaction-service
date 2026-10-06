@@ -103,6 +103,6 @@ sequenceDiagram
 - **Pendientes conocidos:**
   - En los contadores, un movimiento que falla por error técnico se cuenta como "fallido" aunque
     siga `PENDING`.
-  - Si una `Transfer` quedó `SOURCE_DEBITED` sin que llegara a guardarse la pata `{op}-IN`
-    `PENDING`, la recuperación no la crea (a diferencia del caso `STARTED`) y la transferencia se
-    queda en curso indefinidamente.
+  - (Corregido en P2, paso 2.5) Una `Transfer` `SOURCE_DEBITED` sin la pata `{op}-IN` guardada:
+    la recuperación la crea (`createMissingCreditPending`), igual que hace con `{op}-OUT` en
+    `STARTED`, y sigue con el abono.

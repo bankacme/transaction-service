@@ -71,9 +71,10 @@ class StartTransferUseCaseImplTest {
                 MovementOutcome.rejected(new OperationId("op-1-OUT"),
                         new FailureReason("INSUFFICIENT_FUNDS", "no alcanza")));
 
+        // Devuelve la Transfer FAILED (no un error): el controller la convierte en 422 TransferRejected.
         useCase.execute(command("op-1", "acc-A", "acc-B")).test()
-                .assertError(error -> error instanceof BusinessRuleViolationException e
-                        && "INSUFFICIENT_FUNDS".equals(e.getErrorCode()));
+                .assertValue(transfer -> transfer.status() == TransferStatus.FAILED
+                        && "INSUFFICIENT_FUNDS".equals(transfer.failureReason().code()));
 
         Transfer saved = transferRepository.findByOperationId(new OperationId("op-1")).blockingGet();
         assertThat(saved.status()).isEqualTo(TransferStatus.FAILED);
@@ -89,8 +90,8 @@ class StartTransferUseCaseImplTest {
                         new FailureReason("ACCOUNT_INACTIVE", "destino inactivo")));
 
         useCase.execute(command("op-1", "acc-A", "acc-B")).test()
-                .assertError(error -> error instanceof BusinessRuleViolationException e
-                        && "ACCOUNT_INACTIVE".equals(e.getErrorCode()));
+                .assertValue(transfer -> transfer.status() == TransferStatus.COMPENSATED
+                        && "ACCOUNT_INACTIVE".equals(transfer.failureReason().code()));
 
         Transfer saved = transferRepository.findByOperationId(new OperationId("op-1")).blockingGet();
         assertThat(saved.status()).isEqualTo(TransferStatus.COMPENSATED);
@@ -113,9 +114,9 @@ class StartTransferUseCaseImplTest {
                 MovementOutcome.rejected(new OperationId("op-1-OUT"),
                         new FailureReason("ACCOUNT_INACTIVE", "origen tambien inactivo")));
 
+        // Sigue en curso (la recuperación reintenta la reversa): el controller responde 202.
         useCase.execute(command("op-1", "acc-A", "acc-B")).test()
-                .assertError(error -> error instanceof BusinessRuleViolationException e
-                        && "ACCOUNT_INACTIVE".equals(e.getErrorCode()));
+                .assertValue(transfer -> transfer.status() == TransferStatus.COMPENSATING);
 
         Transfer saved = transferRepository.findByOperationId(new OperationId("op-1")).blockingGet();
         assertThat(saved.status()).isEqualTo(TransferStatus.COMPENSATING); // not COMPENSATION_FAILED yet

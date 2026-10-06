@@ -263,6 +263,30 @@ class RecoverPendingOperationsUseCaseImplTest {
     }
 
     @Test
+    void recoversATransferStuckAtSourceDebitedWithTheCreditLegMissingByCreatingItFirst() {
+        // Caída entre las dos escrituras de StartTransferUseCaseImpl: SOURCE_DEBITED guardado,
+        // pero la pata <op>-IN nunca llegó a guardarse.
+        Transfer transfer = Transfer.start(new OperationId("op-1"), "acc-A", "acc-B", amount,
+                TransferKind.THIRD_PARTY, "transferencia", "cust-A", "cust-B", "cust-A", oldClock);
+        Transaction debitCompleted = Transaction.pending(transfer.operationId().forTransferOut(), accountProduct,
+                "cust-A", TransactionType.TRANSFER_OUT, amount, transfer.id(), null, null, null, oldClock)
+                .complete(Money.of(new BigDecimal("500.00")), oldClock);
+        transfer = transfer.sourceDebited(debitCompleted.id(), oldClock);
+        transactionRepository.save(debitCompleted).blockingGet();
+        transferRepository.save(transfer).blockingGet();
+
+        RecoveryResult result = useCase.execute(null).blockingGet();
+
+        assertThat(result.transfersCompleted()).isEqualTo(1);
+        assertThat(transferRepository.findById(transfer.id()).blockingGet().status())
+                .isEqualTo(TransferStatus.COMPLETED);
+        Transaction credit = transactionRepository.findByOperationId(new OperationId("op-1-IN")).blockingGet();
+        assertThat(credit.status()).isEqualTo(TransactionStatus.COMPLETED);
+        assertThat(credit.customerId()).isEqualTo("cust-B");
+        assertThat(credit.product().productId()).isEqualTo("acc-B");
+    }
+
+    @Test
     void recoversATransferStuckAtSourceDebitedWhoseCreditStillFailsStartsCompensation() {
         Transfer transfer = Transfer.start(new OperationId("op-1"), "acc-A", "acc-B", amount,
                 TransferKind.OWN, "transferencia", "cust-A", "cust-A", "cust-A",

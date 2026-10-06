@@ -205,15 +205,30 @@ public class RecoverPendingOperationsUseCaseImpl implements RecoverPendingOperat
 
     private Single<TransferStatus> retryCredit(Transfer transfer) {
         return transactionRepositoryPort.findByOperationId(transfer.operationId().forTransferIn())
-                .flatMapSingle(creditPending -> {
+                .switchIfEmpty(createMissingCreditPending(transfer))
+                .flatMap(creditPending -> {
                     LocalDate today = LocalDate.now(clock);
                     return accountMovementPort.apply(creditPending.operationId(), transfer.targetAccountId(),
                                     TransactionType.TRANSFER_IN, transfer.amount(), today)
                             .flatMap(outcome -> outcome.applied()
                                     ? completeTransfer(transfer, creditPending, outcome)
                                     : startCompensationFromRecovery(transfer, creditPending, outcome));
-                })
-                .switchIfEmpty(Single.just(transfer.status()));
+                });
+    }
+
+    /**
+     * {@code StartTransferUseCaseImpl} guarda {@code SOURCE_DEBITED} (con el débito) y luego, en
+     * OTRA escritura atómica, la pata {@code <op>-IN} {@code PENDING}: una caída entre las dos deja
+     * la transferencia sin pata de crédito. Se crea aquí y se sigue igual que si existiera; aplicar
+     * con la misma operationId es idempotente en account-service, así que no hay riesgo de abonar
+     * dos veces.
+     */
+    private Single<Transaction> createMissingCreditPending(Transfer transfer) {
+        Transaction creditPending = Transaction.pending(transfer.operationId().forTransferIn(),
+                new ProductRef(transfer.targetAccountId(), ProductType.ACCOUNT), transfer.targetCustomerId(),
+                TransactionType.TRANSFER_IN, transfer.amount(), transfer.id(), null, null, transfer.description(),
+                clock);
+        return transactionRepositoryPort.save(creditPending);
     }
 
     private Single<TransferStatus> completeTransfer(Transfer transfer, Transaction creditPending,

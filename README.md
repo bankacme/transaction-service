@@ -37,10 +37,17 @@ P1/P2, vía eventos en P3. Recibe registros de `credit-service`.
 ## Correcciones posteriores al cierre
 - **Reversa con `operationId` original:** `StartTransferUseCaseImpl.reverseDebit` y `RecoverPendingOperationsUseCaseImpl.retryReversal` enviaban `{op}-OUT-REV` en la ruta `/movements/{operationId}/reversal`, pero `account-service` busca la `operationId` original (`{op}-OUT`); contra el servicio real la compensación terminaba siempre en `COMPENSATION_FAILED`. Ahora se envía `{op}-OUT` y `{op}-OUT-REV` queda solo para el `TransactionReversal` anotado. Pruebas ajustadas (`StartTransferUseCaseImplTest`, `RecoverPendingOperationsUseCaseImplTest`).
 
+## P2
+- **2.1 / 2.3:** registro en Eureka y llamadas a account-service por nombre (`LoadBalancerConfig`).
+- **2.5 Transferencias:** la saga ya venía de P1; en P2 se cerraron dos pendientes:
+  - La primera respuesta a un rechazo es la misma que la de la repetición: 422 `TransferRejected`
+    (con `transferId` y `transferStatus`) para `FAILED`/`COMPENSATED`, y 202 si la reversa falló y la
+    transferencia sigue `COMPENSATING`. Antes el caso de uso lanzaba una excepción y salía un
+    `ErrorResponse` simple.
+  - La recuperación crea la pata `{op}-IN` si una `Transfer` `SOURCE_DEBITED` quedó sin ella.
+
 ## Pendientes conocidos (detectados al dibujar los diagramas)
-- **Cuerpo del 422 de transferencia:** en la primera petición un rechazo sale como `ErrorResponse` simple (sin `transferId`/`transferStatus`) y un intento de reversa fallido responde 422 en vez de 202; solo la repetición devuelve `TransferRejected`.
 - **`POST /transactions/records`** no guarda `occurredAt` ni `payerCustomerId` del contrato (`Transaction.record` no los recibe).
-- **Recuperación:** una `Transfer` en `SOURCE_DEBITED` sin pata `{op}-IN` guardada no se recupera.
 
 ## Comandos
 - Compilar, estilo, tests y cobertura: `.\mvnw verify` (reporte en `target/site/jacoco/index.html`)

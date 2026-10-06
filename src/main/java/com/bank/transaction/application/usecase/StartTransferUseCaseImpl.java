@@ -12,7 +12,6 @@ import com.bank.transaction.domain.event.TransferFailed;
 import com.bank.transaction.domain.exception.AccountNotFoundException;
 import com.bank.transaction.domain.exception.BusinessRuleViolationException;
 import com.bank.transaction.domain.model.AccountSnapshot;
-import com.bank.transaction.domain.model.FailureReason;
 import com.bank.transaction.domain.model.MovementOutcome;
 import com.bank.transaction.domain.model.ProductRef;
 import com.bank.transaction.domain.model.ProductType;
@@ -110,8 +109,7 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
         Transfer failedTransfer = transfer.failed(debitOutcome.failureReason(), clock);
         return unitOfWorkPort.saveTransferAndTransaction(failedTransfer, debitFailed)
                 .flatMap(saved -> eventPublisherPort.publish(TransferFailed.from(saved))
-                        .andThen(Single.error(new BusinessRuleViolationException(
-                                debitOutcome.failureReason().code(), debitOutcome.failureReason().message()))));
+                        .andThen(Single.just(saved)));
     }
 
     // --- depositar en destino ---------------------------------------------------------------
@@ -155,7 +153,7 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
         Transfer compensating = transfer.startCompensation(creditOutcome.failureReason(), clock);
         return unitOfWorkPort.saveTransferAndTransaction(compensating, creditFailed)
                 .flatMap(saved -> reverseDebit(saved, debitCompleted))
-                .flatMap(saved -> finishRejectedCredit(saved, creditOutcome.failureReason()));
+                .flatMap(this::finishRejectedCredit);
     }
 
     private Single<Transfer> reverseDebit(Transfer compensating, Transaction debitCompleted) {
@@ -183,11 +181,15 @@ public class StartTransferUseCaseImpl implements StartTransferUseCase {
     /** TransferFailed solo se publica en un estado terminal (FAILED/COMPENSATED/
      *  COMPENSATION_FAILED, ficha sección 3.6) — si la reversa quedó COMPENSATING a la
      *  espera de un reintento, todavía no hay nada que anunciar. */
-    private Single<Transfer> finishRejectedCredit(Transfer saved, FailureReason creditReason) {
-        Single<Transfer> publishIfTerminal = saved.status() == TransferStatus.COMPENSATING
+    /**
+     * Devuelve la Transfer (no un error), igual que la repetición del mismo operationId: el
+     * controller decide la respuesta por su estado. COMPENSATED → 422 {@code TransferRejected}
+     * con {@code transferId}/{@code transferStatus}; COMPENSATING (la reversa falló y queda para la
+     * recuperación) → 202. TransferFailed solo se publica en un estado terminal.
+     */
+    private Single<Transfer> finishRejectedCredit(Transfer saved) {
+        return saved.status() == TransferStatus.COMPENSATING
                 ? Single.just(saved)
                 : eventPublisherPort.publish(TransferFailed.from(saved)).andThen(Single.just(saved));
-        return publishIfTerminal.flatMap(s -> Single.error(
-                new BusinessRuleViolationException(creditReason.code(), creditReason.message())));
     }
 }

@@ -9,6 +9,7 @@ rechazado y la saga **revierte** el retiro del origen (regla 8). Implementado en
 sequenceDiagram
     autonumber
     actor C as Cliente HTTP
+    participant Ctrl as TransfersController
     participant UC as StartTransferUseCaseImpl
     participant Dom as Transfer / Transaction
     participant UOW as UnitOfWorkPort
@@ -29,23 +30,24 @@ sequenceDiagram
     Note over UC,Acc: Paso 3 — reversa del retiro
     UC->>AM: reverse({op}-OUT, origen)
     AM->>Acc: POST /accounts/{origen}/movements/{op}-OUT/reversal
-    Note over AM,Acc: la ruta lleva la operationId ORIGINAL;<br/>{op}-OUT-REV solo se usa en la anotación local
+    Note over AM,Acc: la ruta lleva la operationId ORIGINAL<br/>({op}-OUT-REV solo se usa en la anotación local)
     alt Reversa aplicada
         Acc-->>AM: 200 (saldo, comisión y contador devueltos)
         AM-->>UC: MovementOutcome aplicado
         UC->>Dom: OUT.markReversed(REVERSED) + transfer.compensated()
         UC->>UOW: saveTransferAndTransaction(COMPENSATED, OUT REVERSED)
         UC->>Evt: publish(TransferFailed)
-        UC-->>EH: BusinessRuleViolationException (código del depósito rechazado)
-        EH-->>C: 422 ErrorResponse (code = motivo del destino)
+        UC-->>Ctrl: Transfer COMPENSATED
+        Ctrl-->>EH: TransferRejectedException
+        EH-->>C: 422 TransferRejected (code = motivo del destino, transferId, transferStatus)
     else Reversa rechazada
         Acc-->>AM: 404/422
         AM-->>UC: MovementOutcome rechazado
         UC->>Dom: OUT.markReversalFailed(REVERSAL_FAILED, code) + transfer.compensationAttemptFailed()
         UC->>UOW: saveTransferAndTransaction(COMPENSATING, attempts + 1)
         Note over UC: sin evento: sigue en curso
-        UC-->>EH: BusinessRuleViolationException (código del depósito rechazado)
-        EH-->>C: 422 ErrorResponse
+        UC-->>Ctrl: Transfer COMPENSATING
+        Ctrl-->>C: 202 Accepted (la Transfer en curso)
         Note over UC,Acc: el job de recuperación reintenta la reversa<br/>hasta transfer.compensation.max-attempts (5)<br/>y entonces pasa a COMPENSATION_FAILED
     else Timeout o circuito abierto
         AM-->>UC: error DownstreamServiceUnavailableException
@@ -53,7 +55,7 @@ sequenceDiagram
         EH-->>C: 503 (la Transfer queda COMPENSATING)
     end
 
-    Note over C,EH: Repetir con el mismo operationId devuelve el estado guardado:<br/>COMPENSATED → 422 TransferRejected (transferId, transferStatus)<br/>COMPENSATING → 202 con la Transfer
+    Note over C,EH: Repetir con el mismo operationId devuelve lo mismo que la primera vez:<br/>COMPENSATED → 422 TransferRejected (transferId, transferStatus)<br/>COMPENSATING → 202 con la Transfer
 ```
 
 ## Notas
@@ -72,11 +74,9 @@ sequenceDiagram
   origen muestra el retiro y su reversa (regla 13, historial inmutable).
 - **Retiro rechazado (paso 1).** Si el que falla es el retiro, no hay nada que compensar: la
   `Transfer` pasa de `STARTED` a `FAILED`, la pata `OUT` a `FAILED`, se publica `TransferFailed` y
-  se responde 422 con el motivo del origen (p. ej. `INSUFFICIENT_FUNDS`).
-- **Diferencia con el contrato (pendiente).** En la primera petición un rechazo se propaga como
-  `BusinessRuleViolationException` y el cuerpo es un `ErrorResponse` simple, sin `transferId` ni
-  `transferStatus`; solo la repetición pasa por `TransferRejectedException` y devuelve el cuerpo
-  `TransferRejected` completo. Del mismo modo, un intento de reversa fallido responde 422 aunque la
-  `Transfer` siga `COMPENSATING` (el contrato pide 202 en ese estado). Las pruebas de
-  `TransfersControllerTest` simulan el caso de uso devolviendo la `Transfer` ya rechazada, por eso
-  no lo detectan.
+  se responde 422 `TransferRejected` con el motivo del origen (p. ej. `INSUFFICIENT_FUNDS`).
+- **Misma respuesta la primera vez y al repetir.** El caso de uso nunca convierte un rechazo en
+  excepción: devuelve la `Transfer` y `TransfersController` decide por su estado (`FAILED` /
+  `COMPENSATED` → 422 `TransferRejected` con `transferId` y `transferStatus`; `COMPENSATING` → 202).
+  Es el mismo camino que la repetición del `operationId`. (Corregido en P2, paso 2.5: antes la primera
+  petición respondía un `ErrorResponse` simple y un intento de reversa fallido daba 422 en vez de 202.)
