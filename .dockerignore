@@ -1,0 +1,11 @@
+# Solo pom.xml, checkstyle.xml y src/ entran a la imagen.
+target/
+.git/
+.idea/
+*.iml
+.mvn/
+mvnw
+mvnw.cmd
+docs/
+*.md
+*.ps1
