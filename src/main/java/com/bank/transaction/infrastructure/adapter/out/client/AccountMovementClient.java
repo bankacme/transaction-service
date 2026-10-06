@@ -18,6 +18,7 @@ import io.reactivex.rxjava3.core.Single;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
@@ -76,7 +77,7 @@ public class AccountMovementClient implements AccountMovementPort {
     private final CircuitBreaker circuitBreaker;
     private final TimeLimiter timeLimiter;
 
-    public AccountMovementClient(WebClient.Builder builder,
+    public AccountMovementClient(@LoadBalanced WebClient.Builder builder,
                                   @Value("${bank.clients.account-service.base-url}") String baseUrl,
                                   CircuitBreakerRegistry circuitBreakerRegistry,
                                   TimeLimiterRegistry timeLimiterRegistry) {
