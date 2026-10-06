@@ -38,6 +38,19 @@ class DiscardTransactionUseCaseImplTest {
     }
 
     @Test
+    void discardingTwiceIsIdempotent() {
+        Transaction failed = Transaction.pending(new OperationId("op-1"), new ProductRef("acc-1", ProductType.ACCOUNT),
+                "cust-A", TransactionType.DEPOSIT, Money.of(new BigDecimal("50.00")), null, null, null, null, clock)
+                .fail(new FailureReason("INSUFFICIENT_FUNDS", "no alcanza"), clock);
+        repository.save(failed).blockingGet();
+        useCase.execute(failed.id()).test().assertComplete();
+
+        useCase.execute(failed.id()).test().assertComplete();
+
+        assertThat(repository.findById(failed.id()).blockingGet().status()).isEqualTo(TransactionStatus.DISCARDED);
+    }
+
+    @Test
     void rejectsAnUnknownTransactionId() {
         useCase.execute(TransactionId.newId()).test().assertError(TransactionNotFoundException.class);
     }
