@@ -1,0 +1,153 @@
+# Pipeline de transaction-service (P2, paso 2.7).
+#
+# Flujo de ramas: se trabaja en develop → PR develop → main (se valida) → merge (se publica).
+#   verify  → en todo PR y push a develop/main: pruebas, Checkstyle y cobertura mínima (Jacoco).
+#   publish → solo en push a main (el merge del PR) o con una etiqueta transaction-vN:
+#             imagen amd64 + arm64 en Docker Hub ({namespace}/bank-transaction-service).
+#
+# Requiere en la organización de GitHub (Settings → Secrets and variables → Actions):
+#   secretos  DOCKERHUB_USERNAME, DOCKERHUB_TOKEN (access token de Docker Hub, Read & Write)
+#   variable  DOCKERHUB_NAMESPACE (usuario de Docker Hub donde viven las imágenes)
+name: pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+    tags: ['transaction-v*']
+
+permissions:
+  contents: read
+
+env:
+  SERVICE: transaction-service
+  IMAGE: ${{ vars.DOCKERHUB_NAMESPACE }}/bank-transaction-service
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Mismo orden de carpetas que en la máquina: algunas pruebas leen ../bank-config.
+      - name: Checkout del servicio
+        uses: actions/checkout@v4
+        with:
+          path: transaction-service
+
+      - name: Checkout de bank-config
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/bank-config
+          path: bank-config
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: transaction-service/pom.xml
+
+      - name: Mongo (replica set rs0, como en bank-platform)
+        run: |
+          docker run -d --name mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval "db.adminCommand('ping')" >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec mongo mongosh --quiet --eval \
+            "rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] })"
+          for i in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval "quit(rs.status().myState === 1 ? 0 : 1)" && exit 0
+            sleep 2
+          done
+          echo "Mongo no llegó a PRIMARY" && exit 1
+
+      # verify = Checkstyle (validate) + pruebas + reporte y control de cobertura (jacoco:check).
+      - name: mvn verify
+        working-directory: transaction-service
+        run: mvn -B -ntp verify
+
+      - name: Resumen de cobertura
+        if: ${{ always() }}
+        working-directory: transaction-service
+        run: |
+          csv=target/site/jacoco/jacoco.csv
+          [ -f "$csv" ] || { echo "Sin reporte de Jacoco" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          awk -F, 'NR > 1 { li += $8; lc += $9; bm += $6; bc += $7 }
+            END {
+              printf "### Cobertura de %s\n\n| Métrica | Cubierto | Total | %% |\n|---|---|---|---|\n", svc
+              printf "| Líneas | %d | %d | %.1f %% |\n", lc, li + lc, (li + lc) ? 100 * lc / (li + lc) : 0
+              printf "| Ramas | %d | %d | %.1f %% |\n", bc, bm + bc, (bm + bc) ? 100 * bc / (bm + bc) : 0
+            }' svc="$SERVICE" "$csv" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Reporte de Jacoco
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-transaction-service
+          path: transaction-service/target/site/jacoco/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Reportes de pruebas (si fallan)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-transaction-service
+          path: transaction-service/target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    name: publish
+    needs: verify
+    # Nunca en un PR: la imagen se publica después del merge (los PR tampoco reciben los secretos).
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # main         → latest y sha-<commit>
+      # transaction-v2 → v2 (versión fija para el docker-compose de la entrega)
+      - name: Etiquetas de la imagen
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short
+            type=match,pattern=-(v\d+.*)$,group=1
+
+      - name: Construir y publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resumen
+        run: |
+          {
+            echo "### Imagen publicada"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
